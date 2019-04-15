@@ -1,4 +1,4 @@
-import requests,re
+import requests,re,csv
 from urllib.parse import urlparse
 from bs4 import BeautifulSoup as bs
 
@@ -15,15 +15,14 @@ def getList(page):
     return links,names
 
 def getFbEmail(link,s=''):
-        if 'http://' not in link[:10] and 'https://' not in link[:10]:
-            url = 'https://'+link
-        elif '//' == link[:2]:
+        if '//' == link[:2]:
             url = link[2:]
+        elif 'http://' not in link[:10] and 'https://' not in link[:10]:
+            url = 'https://'+link
         else:
             url = link
-        
         Link = urlparse(url)
-        email = getEmail("https://m.facebook.com/{user}".format(user=Link.path.split('/')[1]),search=s)
+        email = getEmail("https://web.facebook.com/{user}/about".format(user=Link.path.split('/')[1].split('?')[0]),search=s)
         if email:
             return email
         else:
@@ -31,13 +30,21 @@ def getFbEmail(link,s=''):
         
 
 def getEmail(link,fb='',search=''):
-    print(link)
-    if 'http://' not in link[:10].lower() and 'https://' in link[:10].lower():
+    if 'http://' not in link[:10].lower() and 'https://' not in link[:10].lower():
         link = 'http://'+link
     a = urlparse(link)
     aFb = ''
     cPage = ''
-    r = requests.get("{s}://{d}".format(s=a.scheme,d=a.netloc),headers={'User-Agent':'Chrome'})
+    ses = requests.Session()
+    co = {}
+    if search in ['fb','aFb']:
+        Url = link
+    else:
+        Url ="{s}://{d}".format(s=a.scheme,d=a.netloc)
+    try:
+        r = ses.get(Url,headers={'User-Agent':'Chrome'})
+    except:
+        r = ses.get(Url.replace('http:','https:'),headers={'User-Agent':'Chrome'})
     soup = bs(r.content,'lxml')
     body = soup.find('body')
     [s.extract() for s in body.find_all('script')]
@@ -67,29 +74,26 @@ def getEmail(link,fb='',search=''):
         if '/' in cPage[0] and not search:
             print("\t[=] Visiting Contact Page")
             email = getEmail(link+'/'+cPage,search='contact')
-            if email:
+            if len(email) > 4:
                 return email
         elif ('http://' in cPage[:10] or 'https://' in cPage[:10]) and not search:
             print("\t[=] Visiting Contact Page")
             email = getEmail(cPage,search='contact')
-            if email:
+            if len(email)>4:
                 return email
     except:
         pass
     if fb and not search:
-        print(fb)
         print("\t[=] Visiting Facebook Page")
-        
         email = getFbEmail(fb,'fb')
-        if email:
+        if len(email)>4:
             return email
         else:
             return 'NULL'
-    elif aFb and search:
-        print(aFb)
+    elif aFb and not search:
         print("\t[=] Visiting Facebook Page")
-        email = getFbEmail(fb,'aFb')
-        if email:
+        email = getFbEmail(aFb,'aFb')
+        if len(email)>4:
             return email
         else:
             return 'NULL'
@@ -113,7 +117,7 @@ def getData(link,name):
     divs = soup.find_all('div',class_='jTrtdh')
     for div in divs:
         if 'partner status' in div.get_text().lower():
-            pStatus = div.find('h6').get_text().replace('&nbsp;','')
+            pStatus = div.find('h6').get_text().replace('&nbsp;','').strip()
     # PARTNER STATUS
 
     # FACEBOOK PROFILE
@@ -158,7 +162,7 @@ def getData(link,name):
 
     # EMAIL
     print("\n\t[=] Getting Email from website")
-    email= getEmail(web,fb)      
+    email= getEmail(web,fb).split('?')[0]      
     if not email == 'NULL':
         print("\t[+] Email:",email)
     else:
@@ -166,18 +170,23 @@ def getData(link,name):
     # EMAIL
     
     print("[=] Scraping Completed for Company:",name)
+    return [name,web,pStatus,', '.join(indServed),', '.join(conApps),'','',phone,email]
 
 
 print("------------- XERO SCRAPER ------------\n")
 try:
-    for i in range(1,249):
-        print("[=] Getting Companies on Page",i)
-        links,names = getList(i)
-        print("[+] {} Companies Retrieved\n".format(len(links)))
-        for link,name in zip(links,names):
-            data = getData(link,name)
-            print('\n')
-            
+    with open('companies.csv','w',newline='',encoding='utf-8') as file:
+        cFile = csv.writer(file)
+        cFile.writerow(['Company Name','URL','Partner status', 'Industries served', 'Connected Apps', 'Contact person name', 'Contact person position', 'Phone number', 'Email address'])
+        for i in range(1,249):
+            print("[=] Getting Companies on Page",i)
+            links,names = getList(i)
+            print("[+] {} Companies Retrieved\n".format(len(links)))
+            for link,name in zip(links,names):
+                data = getData(link,name)
+                cFile.writerow(data)
+                print('\n')
+                
 except KeyboardInterrupt:
     print("\n[-] Program Stopped")
 except Exception as e:
